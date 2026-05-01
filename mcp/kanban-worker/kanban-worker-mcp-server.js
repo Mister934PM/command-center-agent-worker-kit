@@ -5,6 +5,28 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 
+function loadEnvFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return;
+    const text = fs.readFileSync(filePath, 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const index = trimmed.indexOf('=');
+      if (index < 1) continue;
+      const key = trimmed.slice(0, index).trim();
+      let value = trimmed.slice(index + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch (_) {}
+}
+
+loadEnvFile(path.resolve(__dirname, '..', '..', '.env'));
+loadEnvFile(path.resolve(process.cwd(), '.env'));
+
 const SERVER_NAME = 'command-center-kanban-worker';
 const SERVER_VERSION = '0.1.0';
 const baseUrl = String(process.env.COMMAND_CENTER_URL || 'http://localhost:3000').replace(/\/+$/, '');
