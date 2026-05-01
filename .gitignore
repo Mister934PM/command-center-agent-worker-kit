@@ -1,0 +1,7 @@
+.env
+*.log
+action_log.jsonl
+node_modules/
+tmp/
+.DS_Store
+mcp-config.yaml
