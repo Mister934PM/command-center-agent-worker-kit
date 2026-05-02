@@ -41,6 +41,10 @@ The MCP exposes worker-scoped tools only:
 - `list_labels`
 - `set_task_labels`
 
+Tool calls also report worker heartbeat and task-scoped activity back to Command Center when `COMMAND_CENTER_TOKEN` is set. Operators do not need to manually log routine activity.
+
+Comments and task artifacts are the shared collaboration surface. Any registered worker with `tasks.write` can add task comments and save task artifacts through this MCP. Task artifacts are task-attached markdown/files, not global Command Center documents.
+
 ## Install
 
 Windows:

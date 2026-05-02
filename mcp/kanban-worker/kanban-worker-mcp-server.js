@@ -87,6 +87,42 @@ async function request(method, urlPath, body) {
   return data;
 }
 
+function taskIdFromArgs(args) {
+  const value = Number(args && args.id);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function toolActivity(name, args) {
+  const taskId = taskIdFromArgs(args);
+  const suffix = taskId ? ` task #${taskId}` : '';
+  return `${String(name || 'tool').replace(/_/g, ' ')}${suffix}`;
+}
+
+async function telemetry(method, urlPath, body) {
+  if (!commandCenterToken) return null;
+  try { return await request(method, urlPath, body); }
+  catch (_) { return null; }
+}
+
+async function heartbeat(status, activity, args = {}) {
+  const taskId = taskIdFromArgs(args);
+  await telemetry('POST', '/api/workers/me/heartbeat', {
+    status,
+    activity,
+    current_task_id: taskId,
+  });
+}
+
+async function workerTaskLog(name, args, level, message, payload = {}) {
+  const taskId = taskIdFromArgs(args);
+  if (!taskId) return;
+  await telemetry('POST', `/api/workers/me/tasks/${taskId}/log`, {
+    level,
+    message,
+    payload: { tool: name, agent: agentName, ...payload },
+  });
+}
+
 function limitItems(items, limit, fallback) {
   const max = Math.max(1, Math.min(Number(limit) || fallback, 100));
   return items.slice(0, max);
@@ -164,8 +200,23 @@ async function handle(message) {
   if (method === 'initialize') return result(id, { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: SERVER_NAME, version: SERVER_VERSION } });
   if (method === 'tools/list') return result(id, { tools });
   if (method === 'tools/call') {
-    try { return result(id, textContent(await callTool(params?.name, params?.arguments || {}))); }
-    catch (err) { return result(id, { ...textContent({ error: err.message }), isError: true }); }
+    const name = params?.name;
+    const args = params?.arguments || {};
+    const activity = toolActivity(name, args);
+    try {
+      await heartbeat('working', activity, args);
+      const value = await callTool(name, args);
+      log({ tool: name, task_id: taskIdFromArgs(args), ok: true });
+      await workerTaskLog(name, args, 'info', `Used ${activity}`, { ok: true });
+      await heartbeat('idle', `Last: ${activity}`, args);
+      return result(id, textContent(value));
+    }
+    catch (err) {
+      log({ tool: name, task_id: taskIdFromArgs(args), ok: false, error: err.message });
+      await workerTaskLog(name, args, 'error', `Failed ${activity}: ${err.message}`, { ok: false });
+      await heartbeat('blocked', `Blocked: ${activity}`, args);
+      return result(id, { ...textContent({ error: err.message }), isError: true });
+    }
   }
   if (method && method.startsWith('notifications/')) return;
   error(id, -32601, `Method not found: ${method}`);

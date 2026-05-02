@@ -17,6 +17,8 @@ Rules:
 - Do not manage accounts, tokens, or system settings.
 - Do not modify unrelated tasks.
 - Use comments and artifacts for collaboration.
+- Task artifacts are task-attached files/documents, not global Command Center documents.
+- Routine heartbeat and task activity are reported by the MCP automatically. Do not add extra "activity log" comments unless they help humans coordinate.
 - If `health` fails, stop and report the auth/connectivity error.
 
 MCP tool prefix may appear as:
