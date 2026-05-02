@@ -137,10 +137,16 @@ async function callTool(name, args) {
   if (name === 'list_my_tasks') {
     const tasks = await request('GET', '/api/tasks');
     const status = args.status ? String(args.status).toLowerCase() : null;
-    return limitItems(tasks.filter((task) => {
-      const assignees = Array.isArray(task.assignees) ? task.assignees.map(String) : [String(task.assigned_to || '')];
-      return assignees.includes(agentName) && (!status || String(task.status) === status) && String(task.status) !== 'archive';
-    }), args.limit, 25);
+    return limitItems(tasks
+      .map((task) => {
+        const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+        const mySubtasks = subtasks.filter((subtask) => String(subtask?.assigned_to || '').trim().toLowerCase() === agentName);
+        return { ...task, my_subtasks: mySubtasks };
+      })
+      .filter((task) => {
+        const assignees = Array.isArray(task.assignees) ? task.assignees.map((value) => String(value).trim().toLowerCase()) : [String(task.assigned_to || '').trim().toLowerCase()];
+        return (assignees.includes(agentName) || task.my_subtasks.length > 0) && (!status || String(task.status) === status) && String(task.status) !== 'archive';
+      }), args.limit, 25);
   }
 
   if (name === 'find_tasks') {
