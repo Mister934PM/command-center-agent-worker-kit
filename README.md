@@ -34,10 +34,16 @@ The MCP exposes worker-scoped tools only:
 - `health`
 - `list_my_tasks`
 - `find_tasks`
+- `create_task`
+- `delete_task`
 - `get_task_context`
 - `add_task_comment`
 - `update_task_status`
 - `assign_task`
+- `add_subtask`
+- `update_subtask`
+- `add_subtask_comment`
+- `save_subtask_artifact`
 - `list_task_artifacts`
 - `read_task_artifact`
 - `save_task_artifact`
@@ -47,6 +53,8 @@ The MCP exposes worker-scoped tools only:
 Tool calls also report worker heartbeat and task-scoped activity back to Command Center when `COMMAND_CENTER_TOKEN` is set. Operators do not need to manually log routine activity.
 
 Comments and task artifacts are the shared collaboration surface. Any registered worker with `tasks.write` can add task comments and save task artifacts through this MCP. Task artifacts are task-attached markdown/files, not global Command Center documents.
+
+Subtasks are part of the real shared backend, but they are stored inside the parent task record. Workers should not invent routes or use worker-local kanban task IDs. Use the direct MCP tools above for all real shared backend task and subtask CRUD.
 
 ## NocoDB Support
 

@@ -34,6 +34,8 @@ const agentName = String(process.env.COMMAND_CENTER_AGENT || 'hermes').trim().to
 const commandCenterToken = String(process.env.COMMAND_CENTER_TOKEN || '').trim();
 const actionLogPath = process.env.COMMAND_CENTER_KANBAN_ACTION_LOG || path.join(__dirname, 'action_log.jsonl');
 const allowedStatuses = new Set(['todo', 'inprogress', 'done', 'archive']);
+const allowedSubtaskStatuses = new Set(['todo', 'inprogress', 'done']);
+const allowedPriorities = new Set(['high', 'medium', 'low']);
 const assigneePattern = /^[a-z0-9_-]{2,64}$/;
 
 function schema(props, required = []) {
@@ -48,10 +50,16 @@ const tools = [
   { name: 'health', description: 'Check Command Center worker access.', inputSchema: schema({}) },
   { name: 'list_my_tasks', description: 'List active tasks assigned to this worker.', inputSchema: schema({ status: s('Optional status filter.'), limit: n('Max tasks, default 25.') }) },
   { name: 'find_tasks', description: 'Find tasks by title/description/project text.', inputSchema: schema({ query: s('Search text.'), limit: n('Max tasks, default 10.') }, ['query']) },
+  { name: 'create_task', description: 'Create a real shared Command Center task in the backend task table.', inputSchema: schema({ title: s('Task title.'), description: s('Optional markdown/plain description.'), status: s('todo, inprogress, done, archive. Default todo.'), priority: s('high, medium, low. Default medium.'), assignees: arr('Assignee ids.', { type: 'string' }), due_date: s('Optional due date.'), project_id: n('Optional project id.'), milestone_id: n('Optional milestone id.') }, ['title']) },
+  { name: 'delete_task', description: 'Trash a real shared Command Center task.', inputSchema: schema({ id: n('Task id.') }, ['id']) },
   { name: 'get_task_context', description: 'Read one task with comments, mentions, labels, project context.', inputSchema: schema({ id: n('Task id.') }, ['id']) },
   { name: 'add_task_comment', description: 'Add a worker comment to a task.', inputSchema: schema({ id: n('Task id.'), body: s('Comment body.'), mention_urgent: b('Whether mentions are urgent.') }, ['id', 'body']) },
   { name: 'update_task_status', description: 'Move a task to todo, inprogress, done, or archive.', inputSchema: schema({ id: n('Task id.'), status: s('todo, inprogress, done, archive'), comment: s('Optional status-change note.') }, ['id', 'status']) },
   { name: 'assign_task', description: 'Assign task to one or more known workers. Use for handoffs only.', inputSchema: schema({ id: n('Task id.'), assignees: arr('Assignee ids.', { type: 'string' }), comment: s('Optional handoff note.') }, ['id', 'assignees']) },
+  { name: 'add_subtask', description: 'Add a real subtask to an existing Command Center task.', inputSchema: schema({ id: n('Parent task id.'), title: s('Subtask title.'), assignees: arr('Assignee ids.', { type: 'string' }), priority: s('high, medium, low. Default medium.'), status: s('todo, inprogress, done. Default todo.'), due_date: s('Optional due date.'), notes: s('Optional notes/description.'), references: arr('Optional brief or artifact paths.', { type: 'string' }) }, ['id', 'title']) },
+  { name: 'update_subtask', description: 'Update an existing subtask on a real Command Center task.', inputSchema: schema({ id: n('Parent task id.'), subtask_id: s('Subtask id.'), title: s('Optional title.'), assignees: arr('Assignee ids.', { type: 'string' }), priority: s('high, medium, low.'), status: s('todo, inprogress, done.'), due_date: s('Optional due date.'), notes: s('Optional notes/description.'), references: arr('Optional brief or artifact paths.', { type: 'string' }), is_done: b('Optional explicit completion flag.') }, ['id', 'subtask_id']) },
+  { name: 'add_subtask_comment', description: 'Add a comment directly onto a subtask.', inputSchema: schema({ id: n('Parent task id.'), subtask_id: s('Subtask id.'), body: s('Comment body.') }, ['id', 'subtask_id', 'body']) },
+  { name: 'save_subtask_artifact', description: 'Save a real task artifact and attach it to a subtask.', inputSchema: schema({ id: n('Parent task id.'), subtask_id: s('Subtask id.'), name: s('Artifact filename.'), content: s('Artifact content.'), comment: b('Add parent task artifact comment, default true.'), comment_body: s('Optional parent task artifact comment body.') }, ['id', 'subtask_id', 'name', 'content']) },
   { name: 'list_task_artifacts', description: 'List shared markdown artifacts attached to a task.', inputSchema: schema({ id: n('Task id.') }, ['id']) },
   { name: 'read_task_artifact', description: 'Read a shared task artifact by filename.', inputSchema: schema({ id: n('Task id.'), name: s('Artifact filename.') }, ['id', 'name']) },
   { name: 'save_task_artifact', description: 'Save or overwrite a shared markdown artifact and optionally add a comment.', inputSchema: schema({ id: n('Task id.'), name: s('Artifact filename.'), content: s('Markdown content.'), comment: b('Add artifact comment, default true.'), comment_body: s('Optional comment body.') }, ['id', 'name', 'content']) },
@@ -85,6 +93,41 @@ async function request(method, urlPath, body) {
     throw new Error(`${method} ${urlPath} failed ${res.status}: ${msg}`);
   }
   return data;
+}
+
+function normalizeAssignees(input) {
+  return Array.from(new Set((Array.isArray(input) ? input : [])
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter((value) => assigneePattern.test(value))));
+}
+
+function normalizePriority(value, fallback = 'medium') {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowedPriorities.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSubtaskStatus(value, fallback = 'todo') {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowedSubtaskStatuses.has(normalized) ? normalized : fallback;
+}
+
+function generateSubtaskId() {
+  return `st-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function getTaskContextOrThrow(taskId) {
+  const context = await request('GET', `/api/tasks/${Number(taskId)}/context`);
+  if (!context || !context.task) throw new Error(`Task ${taskId} not found.`);
+  return context;
+}
+
+async function updateTaskSubtasks(taskId, transform) {
+  const context = await getTaskContextOrThrow(taskId);
+  const currentSubtasks = Array.isArray(context.task.subtasks) ? context.task.subtasks : [];
+  const nextSubtasks = transform(currentSubtasks.map((subtask) => ({ ...subtask })), context.task);
+  if (!Array.isArray(nextSubtasks)) throw new Error('Subtask transform must return an array.');
+  const updatedTask = await request('PUT', `/api/tasks/${Number(taskId)}`, { subtasks: nextSubtasks });
+  return { task: updatedTask, subtasks: Array.isArray(updatedTask?.subtasks) ? updatedTask.subtasks : nextSubtasks };
 }
 
 function taskIdFromArgs(args) {
@@ -158,6 +201,32 @@ async function callTool(name, args) {
     return limitItems(tasks.filter((task) => [task.title, task.description, task.project_name].some((v) => String(v || '').toLowerCase().includes(q))), args.limit, 10);
   }
 
+  if (name === 'create_task') {
+    const title = String(args.title || '').trim();
+    if (!title) throw new Error('title is required.');
+    const payload = {
+      title,
+      description: String(args.description || ''),
+      status: allowedStatuses.has(String(args.status || '').toLowerCase()) ? String(args.status).toLowerCase() : 'todo',
+      priority: normalizePriority(args.priority, 'medium'),
+      assignees: normalizeAssignees(args.assignees),
+      due_date: args.due_date ? String(args.due_date).trim() : null,
+    };
+    if (Number.isInteger(Number(args.project_id)) && Number(args.project_id) > 0) payload.project_id = Number(args.project_id);
+    if (Number.isInteger(Number(args.milestone_id)) && Number(args.milestone_id) > 0) payload.milestone_id = Number(args.milestone_id);
+    const data = await request('POST', '/api/tasks', payload);
+    log({ tool: name, task_id: Number(data?.id) || null, ok: true });
+    return data;
+  }
+
+  if (name === 'delete_task') {
+    const taskId = Number(args.id);
+    if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('Valid task id is required.');
+    const data = await request('DELETE', `/api/tasks/${taskId}`);
+    log({ tool: name, task_id: taskId, ok: true });
+    return data;
+  }
+
   if (name === 'get_task_context') return request('GET', `/api/tasks/${Number(args.id)}/context`);
 
   if (name === 'add_task_comment') {
@@ -182,6 +251,115 @@ async function callTool(name, args) {
     if (args.comment) await request('POST', `/api/tasks/${Number(args.id)}/comments`, { author: agentName, body: args.comment, source: 'worker', level: 'info' });
     log({ tool: name, task_id: Number(args.id), assignees, ok: true });
     return data;
+  }
+
+  if (name === 'add_subtask') {
+    const taskId = Number(args.id);
+    if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('Valid task id is required.');
+    const title = String(args.title || '').trim();
+    if (!title) throw new Error('Subtask title is required.');
+    const assignees = normalizeAssignees(args.assignees);
+    const payload = {
+      id: generateSubtaskId(),
+      title,
+      is_done: 0,
+      status: normalizeSubtaskStatus(args.status, 'todo'),
+      priority: normalizePriority(args.priority, 'medium'),
+    };
+    if (assignees.length) {
+      payload.assignees = assignees;
+      payload.assigned_to = assignees[0];
+    }
+    if (args.due_date) payload.due_date = String(args.due_date).trim();
+    if (String(args.notes || '').trim()) payload.notes = String(args.notes).trim();
+    if (Array.isArray(args.references) && args.references.length) {
+      payload.references = Array.from(new Set(args.references.map((value) => String(value || '').trim()).filter(Boolean)));
+    }
+    const data = await updateTaskSubtasks(taskId, (subtasks) => [...subtasks, payload]);
+    return { task_id: taskId, subtask: payload, subtasks: data.subtasks };
+  }
+
+  if (name === 'update_subtask') {
+    const taskId = Number(args.id);
+    const subtaskId = String(args.subtask_id || '').trim();
+    if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('Valid task id is required.');
+    if (!subtaskId) throw new Error('subtask_id is required.');
+    const data = await updateTaskSubtasks(taskId, (subtasks) => {
+      const index = subtasks.findIndex((subtask) => String(subtask?.id || '').trim() === subtaskId);
+      if (index === -1) throw new Error(`Subtask ${subtaskId} not found on task ${taskId}.`);
+      const current = { ...subtasks[index] };
+      if (args.title !== undefined) current.title = String(args.title || '').trim();
+      if (args.status !== undefined) current.status = normalizeSubtaskStatus(args.status, current.status || 'todo');
+      if (args.priority !== undefined) current.priority = normalizePriority(args.priority, current.priority || 'medium');
+      if (args.due_date !== undefined) current.due_date = args.due_date ? String(args.due_date).trim() : '';
+      if (args.notes !== undefined) current.notes = String(args.notes || '').trim();
+      if (args.references !== undefined) {
+        current.references = Array.from(new Set((Array.isArray(args.references) ? args.references : []).map((value) => String(value || '').trim()).filter(Boolean)));
+      }
+      if (args.assignees !== undefined) {
+        const assignees = normalizeAssignees(args.assignees);
+        current.assignees = assignees;
+        current.assigned_to = assignees[0] || '';
+      }
+      if (args.is_done !== undefined) current.is_done = args.is_done ? 1 : 0;
+      if (current.status === 'done') current.is_done = 1;
+      if (current.is_done && current.status !== 'done') current.status = 'done';
+      subtasks[index] = current;
+      return subtasks;
+    });
+    return { task_id: taskId, subtask_id: subtaskId, subtasks: data.subtasks };
+  }
+
+  if (name === 'add_subtask_comment') {
+    const taskId = Number(args.id);
+    const subtaskId = String(args.subtask_id || '').trim();
+    const body = String(args.body || '').trim();
+    if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('Valid task id is required.');
+    if (!subtaskId) throw new Error('subtask_id is required.');
+    if (!body) throw new Error('body is required.');
+    const comment = {
+      id: `comment-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      author: agentName,
+      body,
+      created_at: new Date().toISOString(),
+    };
+    const data = await updateTaskSubtasks(taskId, (subtasks) => {
+      const index = subtasks.findIndex((subtask) => String(subtask?.id || '').trim() === subtaskId);
+      if (index === -1) throw new Error(`Subtask ${subtaskId} not found on task ${taskId}.`);
+      const current = { ...subtasks[index] };
+      current.comments = Array.isArray(current.comments) ? [...current.comments, comment] : [comment];
+      subtasks[index] = current;
+      return subtasks;
+    });
+    return { task_id: taskId, subtask_id: subtaskId, comment, subtasks: data.subtasks };
+  }
+
+  if (name === 'save_subtask_artifact') {
+    const taskId = Number(args.id);
+    const subtaskId = String(args.subtask_id || '').trim();
+    if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('Valid task id is required.');
+    if (!subtaskId) throw new Error('subtask_id is required.');
+    const artifact = await request('POST', `/api/tasks/${taskId}/artifacts`, {
+      name: args.name,
+      content: args.content,
+      comment: args.comment !== false,
+      comment_body: args.comment_body,
+    });
+    const subtaskArtifact = {
+      id: `artifact-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name: String(artifact?.name || args.name || '').trim(),
+      path: String(artifact?.path || artifact?.relative_path || '').trim(),
+      created_at: new Date().toISOString(),
+    };
+    const data = await updateTaskSubtasks(taskId, (subtasks) => {
+      const index = subtasks.findIndex((subtask) => String(subtask?.id || '').trim() === subtaskId);
+      if (index === -1) throw new Error(`Subtask ${subtaskId} not found on task ${taskId}.`);
+      const current = { ...subtasks[index] };
+      current.artifacts = Array.isArray(current.artifacts) ? [...current.artifacts, subtaskArtifact] : [subtaskArtifact];
+      subtasks[index] = current;
+      return subtasks;
+    });
+    return { task_id: taskId, subtask_id: subtaskId, artifact, subtask_artifact: subtaskArtifact, subtasks: data.subtasks };
   }
 
   if (name === 'list_task_artifacts') return request('GET', `/api/tasks/${Number(args.id)}/artifacts`);
