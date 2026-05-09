@@ -11,16 +11,23 @@ case "$AGENT_KEY" in
 esac
 
 SOURCE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-mkdir -p "$TARGET_ROOT/mcp/kanban-worker" "$TARGET_ROOT/skills/command-center-kanban"
+mkdir -p "$TARGET_ROOT/mcp/kanban-worker" "$TARGET_ROOT/skills/command-center-kanban" "$TARGET_ROOT/skills/nocodb-mcp" "$TARGET_ROOT/credentials"
 
 cp "$SOURCE_ROOT/mcp/kanban-worker/kanban-worker-mcp-server.js" "$TARGET_ROOT/mcp/kanban-worker/kanban-worker-mcp-server.js"
 cp "$SOURCE_ROOT/skills/command-center-kanban/SKILL.md" "$TARGET_ROOT/skills/command-center-kanban/SKILL.md"
+cp "$SOURCE_ROOT/skills/nocodb-mcp/nocodb-mcp.js" "$TARGET_ROOT/skills/nocodb-mcp/nocodb-mcp.js"
+cp "$SOURCE_ROOT/skills/nocodb-mcp/mission-records.js" "$TARGET_ROOT/skills/nocodb-mcp/mission-records.js"
+cp "$SOURCE_ROOT/skills/nocodb-mcp/select-base.ps1" "$TARGET_ROOT/skills/nocodb-mcp/select-base.ps1"
+cp "$SOURCE_ROOT/skills/nocodb-mcp/list-bases.ps1" "$TARGET_ROOT/skills/nocodb-mcp/list-bases.ps1"
+cp "$SOURCE_ROOT/skills/nocodb-mcp/SKILL.md" "$TARGET_ROOT/skills/nocodb-mcp/SKILL.md"
 
 cat > "$TARGET_ROOT/.env" <<EOF
 COMMAND_CENTER_URL=$COMMAND_CENTER_URL
 COMMAND_CENTER_AGENT=$AGENT_KEY
 COMMAND_CENTER_TOKEN=$TOKEN
 COMMAND_CENTER_KANBAN_ACTION_LOG=$TARGET_ROOT/mcp/kanban-worker/action_log.jsonl
+COMMAND_CENTER_WORKER_ROOT=$TARGET_ROOT
+NOCODB_MCP_CREDENTIALS_DIR=$TARGET_ROOT/credentials
 EOF
 
 cat > "$TARGET_ROOT/mcp-config.yaml" <<EOF
@@ -34,8 +41,11 @@ mcp_servers:
       COMMAND_CENTER_AGENT: "$AGENT_KEY"
       COMMAND_CENTER_TOKEN: "$TOKEN"
       COMMAND_CENTER_KANBAN_ACTION_LOG: "$TARGET_ROOT/mcp/kanban-worker/action_log.jsonl"
+      COMMAND_CENTER_WORKER_ROOT: "$TARGET_ROOT"
+      NOCODB_MCP_CREDENTIALS_DIR: "$TARGET_ROOT/credentials"
     timeout: 120
     connect_timeout: 60
 EOF
 
 echo "OK: installed Command Center worker kit to $TARGET_ROOT"
+echo "NocoDB credentials dir: $TARGET_ROOT/credentials"

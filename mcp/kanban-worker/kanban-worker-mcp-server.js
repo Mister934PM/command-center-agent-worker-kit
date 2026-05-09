@@ -140,7 +140,10 @@ async function callTool(name, args) {
     return limitItems(tasks
       .map((task) => {
         const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
-        const mySubtasks = subtasks.filter((subtask) => String(subtask?.assigned_to || '').trim().toLowerCase() === agentName);
+        const mySubtasks = subtasks.filter((subtask) => {
+          const subtaskAssignees = Array.isArray(subtask?.assignees) ? subtask.assignees.map((value) => String(value || '').trim().toLowerCase()) : [];
+          return subtaskAssignees.includes(agentName) || String(subtask?.assigned_to || '').trim().toLowerCase() === agentName;
+        });
         return { ...task, my_subtasks: mySubtasks };
       })
       .filter((task) => {
