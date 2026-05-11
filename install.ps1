@@ -24,6 +24,7 @@ New-Item -ItemType Directory -Force -Path $TargetRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot "mcp\kanban-worker") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot "skills\command-center-kanban") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot "skills\nocodb-mcp") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot "skills\hiring-cafe-scraper") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot "credentials") | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $sourceRoot "mcp\kanban-worker\kanban-worker-mcp-server.js") -Destination (Join-Path $TargetRoot "mcp\kanban-worker\kanban-worker-mcp-server.js") -Force
@@ -33,6 +34,10 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\mission-records
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\select-base.ps1") -Destination (Join-Path $TargetRoot "skills\nocodb-mcp\select-base.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\list-bases.ps1") -Destination (Join-Path $TargetRoot "skills\nocodb-mcp\list-bases.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\SKILL.md") -Destination (Join-Path $TargetRoot "skills\nocodb-mcp\SKILL.md") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\scrape-hiring-cafe.js") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\scrape-hiring-cafe.js") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\SKILL.md") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\SKILL.md") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\package.json") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\package.json") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\package-lock.json") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\package-lock.json") -Force
 
 @"
 COMMAND_CENTER_URL=$CommandCenterUrl

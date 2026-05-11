@@ -23,6 +23,9 @@ const TABLE_TITLES = {
   'blog-articles': 'Blog Articles',
   'competitors': 'Competitors',
   'entities': 'Entities',
+  'jobs': 'Jobs',
+  'hiring-jobs': 'Jobs',
+  'hiring-cafe-jobs': 'Jobs',
 };
 
 function die(message) {

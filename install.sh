@@ -11,7 +11,7 @@ case "$AGENT_KEY" in
 esac
 
 SOURCE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-mkdir -p "$TARGET_ROOT/mcp/kanban-worker" "$TARGET_ROOT/skills/command-center-kanban" "$TARGET_ROOT/skills/nocodb-mcp" "$TARGET_ROOT/credentials"
+mkdir -p "$TARGET_ROOT/mcp/kanban-worker" "$TARGET_ROOT/skills/command-center-kanban" "$TARGET_ROOT/skills/nocodb-mcp" "$TARGET_ROOT/skills/hiring-cafe-scraper" "$TARGET_ROOT/credentials"
 
 cp "$SOURCE_ROOT/mcp/kanban-worker/kanban-worker-mcp-server.js" "$TARGET_ROOT/mcp/kanban-worker/kanban-worker-mcp-server.js"
 cp "$SOURCE_ROOT/skills/command-center-kanban/SKILL.md" "$TARGET_ROOT/skills/command-center-kanban/SKILL.md"
@@ -20,6 +20,10 @@ cp "$SOURCE_ROOT/skills/nocodb-mcp/mission-records.js" "$TARGET_ROOT/skills/noco
 cp "$SOURCE_ROOT/skills/nocodb-mcp/select-base.ps1" "$TARGET_ROOT/skills/nocodb-mcp/select-base.ps1"
 cp "$SOURCE_ROOT/skills/nocodb-mcp/list-bases.ps1" "$TARGET_ROOT/skills/nocodb-mcp/list-bases.ps1"
 cp "$SOURCE_ROOT/skills/nocodb-mcp/SKILL.md" "$TARGET_ROOT/skills/nocodb-mcp/SKILL.md"
+cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/scrape-hiring-cafe.js" "$TARGET_ROOT/skills/hiring-cafe-scraper/scrape-hiring-cafe.js"
+cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/SKILL.md" "$TARGET_ROOT/skills/hiring-cafe-scraper/SKILL.md"
+cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/package.json" "$TARGET_ROOT/skills/hiring-cafe-scraper/package.json"
+cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/package-lock.json" "$TARGET_ROOT/skills/hiring-cafe-scraper/package-lock.json"
 
 cat > "$TARGET_ROOT/.env" <<EOF
 COMMAND_CENTER_URL=$COMMAND_CENTER_URL

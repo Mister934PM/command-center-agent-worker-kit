@@ -85,6 +85,34 @@ node .\skills\nocodb-mcp\mission-records.js hiring-cafe blog-articles query 20
 
 For `SEO Keywords` and `Blog Articles`, prefer `mission-records.js` over raw MCP calls.
 
+## HiringCafe Scraper
+
+The kit includes a browser-based HiringCafe scraper for prospecting jobs into the `Hiring Cafe` NocoDB base, `Jobs` table:
+
+```powershell
+node .\skills\hiring-cafe-scraper\scrape-hiring-cafe.js --limit 50 --write
+```
+
+The scraper can attach to an existing browser/CDP endpoint first, which is the preferred path for Hermes/OpenClaw-managed browsers:
+
+```powershell
+node .\skills\hiring-cafe-scraper\scrape-hiring-cafe.js --cdp-url "http://127.0.0.1:9222" --limit 50 --write
+```
+
+If no shared browser is available, it falls back to its own normal Playwright browser session and waits for the ordinary page/interstitial to clear. It does not bypass CAPTCHA or hard anti-bot blocks. Install the local package/browser only for that fallback path:
+
+```powershell
+cd .\skills\hiring-cafe-scraper
+npm install
+npm run install-browser
+```
+
+If HiringCafe keeps showing the security verification page, run once in a visible persistent browser session, complete the normal check if prompted, then rerun the headless write command:
+
+```powershell
+node scrape-hiring-cafe.js --headful --dry-run --limit 5
+```
+
 ## Install
 
 Windows:

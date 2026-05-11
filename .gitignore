@@ -2,6 +2,7 @@
 *.log
 action_log.jsonl
 node_modules/
+.cache/
 tmp/
 .DS_Store
 mcp-config.yaml
