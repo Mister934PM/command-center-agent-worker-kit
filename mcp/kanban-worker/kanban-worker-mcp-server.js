@@ -95,10 +95,28 @@ async function request(method, urlPath, body) {
   return data;
 }
 
+function normalizeAssigneeToken(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/^@+/, '');
+  if (['me', 'user', 'owner', 'ro', 'roland'].includes(normalized)) return 'roland';
+  if (['vix', 'vixxie', 'vicky', 'victoria'].includes(normalized)) return 'vicky';
+  return normalized;
+}
+
 function normalizeAssignees(input) {
-  return Array.from(new Set((Array.isArray(input) ? input : [])
-    .map((value) => String(value || '').trim().toLowerCase())
+  const values = Array.isArray(input) ? input : String(input || '').split(/[,\s]+/);
+  return Array.from(new Set(values
+    .map(normalizeAssigneeToken)
     .filter((value) => assigneePattern.test(value))));
+}
+
+function taskAssignees(task) {
+  return normalizeAssignees(Array.isArray(task?.assignees) ? task.assignees : task?.assigned_to);
+}
+
+function assertAssigneesApplied(expected, task) {
+  const actual = new Set(taskAssignees(task));
+  const missing = expected.filter((assignee) => !actual.has(assignee));
+  if (missing.length) throw new Error(`Assignee verification failed: missing ${missing.join(', ')}`);
 }
 
 function normalizePriority(value, fallback = 'medium') {
@@ -245,9 +263,10 @@ async function callTool(name, args) {
   }
 
   if (name === 'assign_task') {
-    const assignees = Array.from(new Set((args.assignees || []).map((v) => String(v).trim().toLowerCase()).filter((v) => assigneePattern.test(v))));
+    const assignees = normalizeAssignees(args.assignees);
     if (!assignees.length) throw new Error('No valid assignees supplied.');
     const data = await request('PUT', `/api/tasks/${Number(args.id)}`, { assignees });
+    assertAssigneesApplied(assignees, data);
     if (args.comment) await request('POST', `/api/tasks/${Number(args.id)}/comments`, { author: agentName, body: args.comment, source: 'worker', level: 'info' });
     log({ tool: name, task_id: Number(args.id), assignees, ok: true });
     return data;

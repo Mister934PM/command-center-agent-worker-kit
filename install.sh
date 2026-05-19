@@ -21,6 +21,8 @@ cp "$SOURCE_ROOT/skills/nocodb-mcp/select-base.ps1" "$TARGET_ROOT/skills/nocodb-
 cp "$SOURCE_ROOT/skills/nocodb-mcp/list-bases.ps1" "$TARGET_ROOT/skills/nocodb-mcp/list-bases.ps1"
 cp "$SOURCE_ROOT/skills/nocodb-mcp/SKILL.md" "$TARGET_ROOT/skills/nocodb-mcp/SKILL.md"
 cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/scrape-hiring-cafe.js" "$TARGET_ROOT/skills/hiring-cafe-scraper/scrape-hiring-cafe.js"
+cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/command-center-prospecting.js" "$TARGET_ROOT/skills/hiring-cafe-scraper/command-center-prospecting.js"
+cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/import-prospecting-records.js" "$TARGET_ROOT/skills/hiring-cafe-scraper/import-prospecting-records.js"
 cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/SKILL.md" "$TARGET_ROOT/skills/hiring-cafe-scraper/SKILL.md"
 cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/package.json" "$TARGET_ROOT/skills/hiring-cafe-scraper/package.json"
 cp "$SOURCE_ROOT/skills/hiring-cafe-scraper/package-lock.json" "$TARGET_ROOT/skills/hiring-cafe-scraper/package-lock.json"

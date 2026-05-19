@@ -50,6 +50,9 @@ The MCP exposes worker-scoped tools only:
 - `list_labels`
 - `set_task_labels`
 
+`assign_task` supports multiple assignees. Pass `assignees` as an array such as
+`["roland","link","poe","orwell"]`; comma- or space-separated text is also accepted by the worker runtime for clients that cannot send arrays cleanly.
+
 Tool calls also report worker heartbeat and task-scoped activity back to Command Center when `COMMAND_CENTER_TOKEN` is set. Operators do not need to manually log routine activity.
 
 Comments and task artifacts are the shared collaboration surface. Any registered worker with `tasks.write` can add task comments and save task artifacts through this MCP. Task artifacts are task-attached markdown/files, not global Command Center documents.
@@ -87,7 +90,21 @@ For `SEO Keywords` and `Blog Articles`, prefer `mission-records.js` over raw MCP
 
 ## HiringCafe Scraper
 
-The kit includes a browser-based HiringCafe scraper for prospecting jobs into the `Hiring Cafe` NocoDB base, `Jobs` table:
+Preferred path for sources that do not fight automation: Command Center owns scraper jobs and NocoDB writes. Workers can trigger the backend API and poll status:
+
+```powershell
+node .\skills\hiring-cafe-scraper\command-center-prospecting.js --limit 50 --write --poll
+```
+
+HiringCafe specifically works best through an operative's regular OpenClaw browser. For that lane, extract jobs in the browser, save JSON, then let Command Center normalize/write:
+
+```powershell
+node .\skills\hiring-cafe-scraper\import-prospecting-records.js --input .\hiring-cafe-jobs.json --write
+```
+
+The local browser-based HiringCafe scraper remains as a fallback or standalone diagnostic tool for prospecting jobs into the `Hiring Cafe` NocoDB base, `Jobs` table:
+
+HiringCafe normally shows a Cloudflare/interstitial page for 5-10 seconds even for a human browser. Treat that as expected behavior; do not report failure until the configured wait expires.
 
 ```powershell
 node .\skills\hiring-cafe-scraper\scrape-hiring-cafe.js --limit 50 --write

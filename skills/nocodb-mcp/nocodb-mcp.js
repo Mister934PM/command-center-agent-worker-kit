@@ -5,8 +5,22 @@ const path = require('node:path');
 
 const home = process.env.USERPROFILE || process.env.HOME || process.cwd();
 const workerRoot = process.env.COMMAND_CENTER_WORKER_ROOT || path.resolve(__dirname, '..', '..');
-const credentialsDir = process.env.NOCODB_MCP_CREDENTIALS_DIR || path.join(workerRoot, 'credentials');
-const configPath = process.env.NOCODB_MCP_CONFIG || path.join(credentialsDir, 'nocodb-mcp.local.json');
+const defaultConfigFile = 'nocodb-mcp.local.json';
+
+function resolveCredentialsDir(configFile = defaultConfigFile) {
+  if (process.env.NOCODB_MCP_CREDENTIALS_DIR) {
+    return process.env.NOCODB_MCP_CREDENTIALS_DIR;
+  }
+  const candidates = [
+    path.join(home, '.vixxie', 'credentials'),
+    path.join(workerRoot, 'credentials'),
+  ];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, configFile))) || candidates[0];
+}
+
+const credentialsDir = resolveCredentialsDir();
+const configPath = process.env.NOCODB_MCP_CONFIG || path.join(credentialsDir, defaultConfigFile);
+const mcporterConfigPath = process.env.MCPORTER_CONFIG || path.join(home, '.vixxie', 'credentials', 'mcporter.vixxie.json');
 
 function readConfig() {
   if (!fs.existsSync(configPath)) {
@@ -19,11 +33,18 @@ function readConfig() {
   return cfg;
 }
 
+function ensureMcporterConfig() {
+  if (fs.existsSync(mcporterConfigPath)) return;
+  fs.mkdirSync(path.dirname(mcporterConfigPath), { recursive: true });
+  fs.writeFileSync(mcporterConfigPath, '{"mcpServers":{}}\n', 'utf8');
+}
+
 function runMcporter(args) {
   const isWindows = process.platform === 'win32';
   const cliPath = path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'mcporter', 'dist', 'cli.js');
   const bin = isWindows ? process.execPath : 'mcporter';
-  const finalArgs = isWindows ? [cliPath, ...args] : args;
+  ensureMcporterConfig();
+  const finalArgs = isWindows ? [cliPath, '--config', mcporterConfigPath, ...args] : ['--config', mcporterConfigPath, ...args];
 
   const result = spawnSync(bin, finalArgs, {
     stdio: 'inherit',
@@ -129,3 +150,4 @@ if (command === 'call-kv') {
 }
 
 throw new Error(`Unknown command: ${command}`);
+

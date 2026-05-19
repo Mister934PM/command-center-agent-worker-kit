@@ -21,6 +21,10 @@ Rules:
 - Use comments and artifacts for collaboration.
 - Task artifacts are task-attached files/documents, not global Command Center documents.
 - Use only the real Command Center worker MCP tools for task/subtask CRUD. Do not use worker-local placeholder kanban layers or fake `t_...` task IDs.
+- Multi-assignment is supported through `assign_task` with `assignees` as an array, for example `["roland","link","poe","orwell"]`.
+- If a client can only pass text, comma- or space-separated assignees are accepted by the worker kit and normalized.
+- Use `me`, `ro`, `user`, or `owner` only when you mean `roland`; the worker kit normalizes those aliases.
+- After assignment, trust the returned `assignees` array. `assigned_to` is a legacy primary-owner field and may show only one user.
 - Routine heartbeat and task activity are reported by the MCP automatically. Do not add extra "activity log" comments unless they help humans coordinate.
 - If `health` fails, stop and report the auth/connectivity error.
 

@@ -35,6 +35,8 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\select-base.ps1
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\list-bases.ps1") -Destination (Join-Path $TargetRoot "skills\nocodb-mcp\list-bases.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\nocodb-mcp\SKILL.md") -Destination (Join-Path $TargetRoot "skills\nocodb-mcp\SKILL.md") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\scrape-hiring-cafe.js") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\scrape-hiring-cafe.js") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\command-center-prospecting.js") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\command-center-prospecting.js") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\import-prospecting-records.js") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\import-prospecting-records.js") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\SKILL.md") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\SKILL.md") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\package.json") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\package.json") -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot "skills\hiring-cafe-scraper\package-lock.json") -Destination (Join-Path $TargetRoot "skills\hiring-cafe-scraper\package-lock.json") -Force

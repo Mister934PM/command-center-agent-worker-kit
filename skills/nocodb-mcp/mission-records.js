@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
-const workerRoot = process.env.COMMAND_CENTER_WORKER_ROOT || path.resolve(__dirname, '..', '..');
-const credentialsDir = process.env.NOCODB_MCP_CREDENTIALS_DIR || path.join(workerRoot, 'credentials');
+const ADMIN_HELPER = process.env.NOCODB_ADMIN_HELPER || 'C:\\Users\\user\\.vixxie\\workspace\\skills\\nocodb-admin\\nocodb-admin.js';
 
 const ALIAS_MAP = {
   'main': 'main',
@@ -16,6 +16,13 @@ const ALIAS_MAP = {
   'praxica.io': 'praxica',
   'sourcedeck': 'sourcedeck',
   'sourcedeck.io': 'sourcedeck',
+};
+
+const BASE_IDS = {
+  main: 'pd6ks71ihvvtpen',
+  'hiring-cafe': 'prwnmdijh9wlrx9',
+  praxica: 'pia6bumiscfio0p',
+  sourcedeck: 'ptefvr801ewl3dk',
 };
 
 const TABLE_TITLES = {
@@ -50,56 +57,46 @@ function canonicalAlias(alias) {
   return ALIAS_MAP[normalized] || normalized;
 }
 
-function resolveConfig(alias) {
-  const normalized = canonicalAlias(alias);
-  const configFile = normalized === 'main'
-    ? 'nocodb-mcp.local.json'
-    : `nocodb-mcp.${normalized}.local.json`;
-  const configPath = path.join(credentialsDir, configFile);
-  if (!fs.existsSync(configPath)) {
-    die(`Missing NocoDB config for alias '${alias}': ${configPath}`);
-  }
-  return configPath;
+function baseIdFor(alias) {
+  const canonical = canonicalAlias(alias);
+  const baseId = BASE_IDS[canonical];
+  if (!baseId) die(`Unknown base alias: ${alias}`);
+  return baseId;
 }
 
-function parseJsonFile(filePath) {
-  const abs = path.resolve(filePath);
-  if (!fs.existsSync(abs)) {
-    die(`Missing JSON file: ${abs}`);
-  }
-  return JSON.parse(fs.readFileSync(abs, 'utf8').replace(/^\uFEFF/, ''));
-}
-
-function helperArgs(commandArgs) {
-  return [path.join(__dirname, 'nocodb-mcp.js'), ...commandArgs];
-}
-
-function runHelper(configPath, commandArgs) {
-  const result = spawnSync(process.execPath, helperArgs(commandArgs), {
-    env: { ...process.env, NOCODB_MCP_CONFIG: configPath, NOCODB_MCP_CREDENTIALS_DIR: credentialsDir, COMMAND_CENTER_WORKER_ROOT: workerRoot },
+function runAdmin(args) {
+  if (!fs.existsSync(ADMIN_HELPER)) die(`Missing NocoDB admin helper: ${ADMIN_HELPER}`);
+  const result = spawnSync(process.execPath, [ADMIN_HELPER, ...args], {
     encoding: 'utf8',
     shell: false,
     stdio: 'pipe',
+    env: { ...process.env },
   });
   if (result.error) throw result.error;
   if ((result.status ?? 1) !== 0) {
     const stderr = String(result.stderr || '').trim();
     const stdout = String(result.stdout || '').trim();
-    die(stderr || stdout || `Helper failed with exit code ${result.status}`);
+    die(stderr || stdout || `NocoDB admin helper failed with exit code ${result.status}`);
   }
   const output = String(result.stdout || '').trim();
   if (!output) return null;
   try {
     return JSON.parse(output);
   } catch {
-    die(`Helper returned non-JSON output:\n${output}`);
+    die(`NocoDB admin helper returned non-JSON output:\n${output}`);
   }
 }
 
-function getTableId(configPath, tableAlias) {
+function parseJsonFile(filePath) {
+  const abs = path.resolve(filePath);
+  if (!fs.existsSync(abs)) die(`Missing JSON file: ${abs}`);
+  return JSON.parse(fs.readFileSync(abs, 'utf8').replace(/^\uFEFF/, ''));
+}
+
+function getTableId(baseId, tableAlias) {
   const tableTitle = TABLE_TITLES[String(tableAlias || '').trim().toLowerCase()];
   if (!tableTitle) die(`Unknown table alias: ${tableAlias}`);
-  const tables = runHelper(configPath, ['tables']) || [];
+  const tables = runAdmin(['tables', '--base', baseId]) || [];
   const match = tables.find((table) => table.title === tableTitle);
   if (!match) die(`Table '${tableTitle}' not found in selected base.`);
   return match.id;
@@ -125,23 +122,13 @@ function normalizeSeoKeywordFields(fields) {
   const next = { ...fields };
   if (!next.Title || !String(next.Title).trim()) die('SEO Keywords requires a non-empty Title.');
   next.Intent = normalizeChoice(next.Intent, {
-    'info': 'Info',
-    'informational': 'Info',
-    'trans': 'Trans',
-    'transactional': 'Trans',
-    'nav': 'Nav',
-    'navigational': 'Nav',
-    'comm': 'Comm',
-    'commercial': 'Comm',
+    info: 'Info', informational: 'Info', trans: 'Trans', transactional: 'Trans',
+    nav: 'Nav', navigational: 'Nav', comm: 'Comm', commercial: 'Comm',
     'commercial investigation': 'Comm',
   }, 'Intent');
   next.Status = normalizeChoice(next.Status, {
-    'new': 'New',
-    'targeted': 'Targeted',
-    'researching': 'Researching',
-    'to research': 'Researching',
-    'content created': 'Content Created',
-    'created': 'Content Created',
+    new: 'New', targeted: 'Targeted', researching: 'Researching',
+    'to research': 'Researching', 'content created': 'Content Created', created: 'Content Created',
   }, 'Status');
   if (next['GEO Potential'] !== undefined) next['GEO Potential'] = normalizeGeoPotential(next['GEO Potential']);
   return next;
@@ -151,20 +138,10 @@ function normalizeBlogArticleFields(fields) {
   const next = { ...fields };
   if (!next.Title || !String(next.Title).trim()) die('Blog Articles requires a non-empty Title.');
   next.Status = normalizeChoice(next.Status, {
-    'to research': 'To Research',
-    'research': 'To Research',
-    'to brief': 'To Brief',
-    'brief': 'To Brief',
-    'drafting': 'Drafting',
-    'editing': 'Editing',
-    'published': 'Published',
+    'to research': 'To Research', research: 'To Research', 'to brief': 'To Brief',
+    brief: 'To Brief', drafting: 'Drafting', editing: 'Editing', published: 'Published',
   }, 'Status');
-  next.Priority = normalizeChoice(next.Priority, {
-    'low': 'Low',
-    'med': 'Med',
-    'medium': 'Med',
-    'high': 'High',
-  }, 'Priority');
+  next.Priority = normalizeChoice(next.Priority, { low: 'Low', med: 'Med', medium: 'Med', high: 'High' }, 'Priority');
   return next;
 }
 
@@ -183,21 +160,29 @@ function loadFields(jsonFile) {
   die('JSON payload must be an object, {"fields": {...}}, or {"data": {...}}.');
 }
 
-function queryRecords(configPath, tableId, pageSize = 100) {
-  return runHelper(configPath, ['call', 'queryRecords', JSON.stringify({ tableId, pageSize })]);
+function writeTempRecords(records) {
+  const filePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nocodb-records-')), 'records.json');
+  fs.writeFileSync(filePath, JSON.stringify(records, null, 2), 'utf8');
+  return filePath;
 }
 
-function findRecordByTitle(configPath, tableId, title) {
-  const result = queryRecords(configPath, tableId, 200) || { records: [] };
-  return (result.records || []).find((record) => String(record?.fields?.Title || '').trim().toLowerCase() === String(title).trim().toLowerCase()) || null;
+function queryRecords(tableId, pageSize = 100) {
+  return runAdmin(['records', '--table', tableId, '--limit', String(pageSize)]);
 }
 
-function createRecord(configPath, tableId, fields) {
-  return runHelper(configPath, ['call', 'createRecords', JSON.stringify({ tableId, records: [{ fields }] })]);
+function findRecordByTitle(tableId, title) {
+  const result = queryRecords(tableId, 200) || { list: [] };
+  return (result.list || []).find((record) => String(record?.Title || '').trim().toLowerCase() === String(title).trim().toLowerCase()) || null;
 }
 
-function updateRecord(configPath, tableId, id, fields) {
-  return runHelper(configPath, ['call', 'updateRecords', JSON.stringify({ tableId, records: [{ id, fields }] })]);
+function createRecord(tableId, fields) {
+  const input = writeTempRecords([fields]);
+  return runAdmin(['create-records', '--table', tableId, '--input', input, '--execute']);
+}
+
+function updateRecord(baseId, tableId, id, fields) {
+  const input = writeTempRecords([{ Id: Number(id), ...fields }]);
+  return runAdmin(['update-records', '--base', baseId, '--table', tableId, '--input', input, '--execute']);
 }
 
 (function main() {
@@ -205,18 +190,18 @@ function updateRecord(configPath, tableId, id, fields) {
   if (!baseAlias || baseAlias === 'help' || baseAlias === '--help' || baseAlias === '-h') usage();
   if (!tableAlias || !action) usage();
 
-  const configPath = resolveConfig(baseAlias);
-  const tableId = getTableId(configPath, tableAlias);
+  const baseId = baseIdFor(baseAlias);
+  const tableId = getTableId(baseId, tableAlias);
 
   if (action === 'query') {
     const pageSize = Number(arg1 || 20);
-    console.log(JSON.stringify(queryRecords(configPath, tableId, pageSize), null, 2));
+    console.log(JSON.stringify(queryRecords(tableId, pageSize), null, 2));
     return;
   }
 
   if (action === 'create') {
     const fields = normalizeFields(tableAlias, loadFields(arg1));
-    console.log(JSON.stringify(createRecord(configPath, tableId, fields), null, 2));
+    console.log(JSON.stringify(createRecord(tableId, fields), null, 2));
     return;
   }
 
@@ -224,17 +209,17 @@ function updateRecord(configPath, tableId, id, fields) {
     const id = Number(arg1);
     if (!Number.isFinite(id)) die('Update requires a numeric recordId.');
     const fields = normalizeFields(tableAlias, loadFields(arg2));
-    console.log(JSON.stringify(updateRecord(configPath, tableId, id, fields), null, 2));
+    console.log(JSON.stringify(updateRecord(baseId, tableId, id, fields), null, 2));
     return;
   }
 
   if (action === 'upsert') {
     const fields = normalizeFields(tableAlias, loadFields(arg1));
-    const existing = findRecordByTitle(configPath, tableId, fields.Title);
+    const existing = findRecordByTitle(tableId, fields.Title);
     const result = existing
-      ? updateRecord(configPath, tableId, Number(existing.id), fields)
-      : createRecord(configPath, tableId, fields);
-    console.log(JSON.stringify({ mode: existing ? 'update' : 'create', existingId: existing ? Number(existing.id) : null, result }, null, 2));
+      ? updateRecord(baseId, tableId, Number(existing.Id), fields)
+      : createRecord(tableId, fields);
+    console.log(JSON.stringify({ mode: existing ? 'update' : 'create', existingId: existing ? Number(existing.Id) : null, result }, null, 2));
     return;
   }
 

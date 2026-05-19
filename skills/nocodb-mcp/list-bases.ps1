@@ -9,7 +9,13 @@ $workerRoot = if ($env:COMMAND_CENTER_WORKER_ROOT) {
 $credentialsDir = if ($env:NOCODB_MCP_CREDENTIALS_DIR) {
     $env:NOCODB_MCP_CREDENTIALS_DIR
 } else {
-    Join-Path $workerRoot 'credentials'
+    $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
+    $candidates = @(
+        (Join-Path $homeDir '.vixxie\credentials'),
+        (Join-Path $workerRoot 'credentials')
+    )
+    $match = $candidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'nocodb-mcp.local.json') } | Select-Object -First 1
+    if ($match) { $match } else { $candidates[0] }
 }
 
 if (-not (Test-Path -LiteralPath $credentialsDir)) {
@@ -32,3 +38,4 @@ Get-ChildItem -LiteralPath $credentialsDir -Filter 'nocodb-mcp.*.local.json' -Fi
     }
 
 @($aliases | Sort-Object -Unique) | ConvertTo-Json
+
