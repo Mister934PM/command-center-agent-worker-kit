@@ -47,6 +47,7 @@ COMMAND_CENTER_AGENT=$normalizedAgent
 COMMAND_CENTER_TOKEN=$Token
 COMMAND_CENTER_KANBAN_ACTION_LOG=$TargetRoot\mcp\kanban-worker\action_log.jsonl
 COMMAND_CENTER_WORKER_ROOT=$TargetRoot
+PRAXICA_KNOWLEDGE_DEFAULT_COLLECTION="10 Research"
 NOCODB_MCP_CREDENTIALS_DIR=$TargetRoot\credentials
 "@ | Set-Content -LiteralPath (Join-Path $TargetRoot ".env") -Encoding ASCII
 
@@ -62,6 +63,7 @@ mcp_servers:
       COMMAND_CENTER_TOKEN: "$Token"
       COMMAND_CENTER_KANBAN_ACTION_LOG: "$((Join-Path $TargetRoot "mcp\kanban-worker\action_log.jsonl").Replace('\','/'))"
       COMMAND_CENTER_WORKER_ROOT: "$($TargetRoot.Replace('\','/'))"
+      PRAXICA_KNOWLEDGE_DEFAULT_COLLECTION: "10 Research"
       NOCODB_MCP_CREDENTIALS_DIR: "$((Join-Path $TargetRoot "credentials").Replace('\','/'))"
     timeout: 120
     connect_timeout: 60

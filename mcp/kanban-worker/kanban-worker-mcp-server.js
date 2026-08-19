@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const crypto = require('crypto');
 
 function loadEnvFile(filePath) {
   try {
@@ -31,7 +32,26 @@ const SERVER_NAME = 'command-center-kanban-worker';
 const SERVER_VERSION = '0.1.0';
 const baseUrl = String(process.env.COMMAND_CENTER_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const agentName = String(process.env.COMMAND_CENTER_AGENT || 'hermes').trim().toLowerCase() || 'hermes';
-const commandCenterToken = String(process.env.COMMAND_CENTER_TOKEN || '').trim();
+
+function readCommandCenterToken() {
+  const direct = String(process.env.COMMAND_CENTER_TOKEN || '').trim();
+  if (direct) return direct;
+  const tokenFile = String(process.env.COMMAND_CENTER_TOKEN_FILE || '').trim();
+  if (!tokenFile) return '';
+  try {
+    const raw = fs.readFileSync(tokenFile, 'utf8').trim();
+    if (!raw.startsWith('{')) return raw;
+    const parsed = JSON.parse(raw);
+    return String(parsed.token || parsed.workerToken || '').trim();
+  } catch (error) {
+    console.error(`[${SERVER_NAME}] failed to read COMMAND_CENTER_TOKEN_FILE: ${error.message}`);
+    return '';
+  }
+}
+
+const commandCenterToken = readCommandCenterToken();
+const knowledgeDefaultNotebook = String(process.env.PRAXICA_KNOWLEDGE_DEFAULT_NOTEBOOK || '').trim();
+const knowledgeDefaultCollection = String(process.env.PRAXICA_KNOWLEDGE_DEFAULT_COLLECTION || '10 Research').trim();
 const actionLogPath = process.env.COMMAND_CENTER_KANBAN_ACTION_LOG || path.join(__dirname, 'action_log.jsonl');
 const allowedStatuses = new Set(['todo', 'inprogress', 'done', 'archive']);
 const allowedSubtaskStatuses = new Set(['todo', 'inprogress', 'done']);
@@ -65,6 +85,19 @@ const tools = [
   { name: 'save_task_artifact', description: 'Save or overwrite a shared markdown artifact and optionally add a comment.', inputSchema: schema({ id: n('Task id.'), name: s('Artifact filename.'), content: s('Markdown content.'), comment: b('Add artifact comment, default true.'), comment_body: s('Optional comment body.') }, ['id', 'name', 'content']) },
   { name: 'list_labels', description: 'List existing labels for tagging tasks. Does not create labels.', inputSchema: schema({}) },
   { name: 'set_task_labels', description: 'Replace labels on a task using existing label IDs only.', inputSchema: schema({ id: n('Task id.'), label_ids: arr('Existing label IDs.', { type: 'number' }), comment: s('Optional label-change note.') }, ['id', 'label_ids']) },
+  { name: 'praxica_knowledge_status', description: 'Check canonical Praxica Knowledge repository access.', inputSchema: schema({}) },
+  { name: 'praxica_knowledge_list_notebooks', description: 'List available Praxica Knowledge notebooks.', inputSchema: schema({}) },
+  { name: 'praxica_knowledge_list_templates', description: 'List reusable Praxica Knowledge templates.', inputSchema: schema({}) },
+  { name: 'praxica_knowledge_search', description: 'Search the canonical Praxica Knowledge repository.', inputSchema: schema({ query: s('Search text.'), limit: n('Maximum results, default 50.') }) },
+  { name: 'praxica_knowledge_read', description: 'Read a canonical document with Markdown and revision.', inputSchema: schema({ document_id: s('Document ID or praxica://knowledge URI.') }, ['document_id']) },
+  { name: 'praxica_knowledge_create', description: 'Create a canonical Markdown document. Defaults to the worker 10 Research collection.', inputSchema: schema({ title: s('Document title.'), markdown: s('Markdown body.'), collection: s('Top-level collection override.'), path: s('Absolute repository path override.'), notebook: s('Notebook override.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['title', 'markdown']) },
+  { name: 'praxica_knowledge_create_from_template', description: 'Create a canonical document from a built-in template.', inputSchema: schema({ template_id: s('Template ID.'), variables: { type: 'object', description: 'Template variables, including title.', additionalProperties: true }, collection: s('Top-level collection override.'), path: s('Absolute repository path override.'), notebook: s('Notebook override.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['template_id', 'variables']) },
+  { name: 'praxica_knowledge_append', description: 'Append Markdown to a canonical document.', inputSchema: schema({ document_id: s('Document ID or URI.'), markdown: s('Markdown to append.'), expected_revision: s('Revision returned by the last read.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['document_id', 'markdown']) },
+  { name: 'praxica_knowledge_edit', description: 'Safely replace one exact, unique Markdown excerpt using optimistic concurrency. Read immediately before editing.', inputSchema: schema({ document_id: s('Document ID or URI.'), old_text: s('Exact unique text copied from the latest read.'), new_text: { type: 'string', description: 'Replacement text; may be empty.' }, expected_revision: s('Required revision returned by the latest read.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['document_id', 'old_text', 'new_text', 'expected_revision']) },
+  { name: 'praxica_knowledge_replace', description: 'Replace a complete document body only after explicit whole-document confirmation. Prefer praxica_knowledge_edit.', inputSchema: schema({ document_id: s('Document ID or URI.'), markdown: s('Complete replacement Markdown.'), expected_revision: s('Required revision returned by the last read.'), confirm_full_replace: b('Must be true after explicit whole-document confirmation.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['document_id', 'markdown', 'expected_revision', 'confirm_full_replace']) },
+  { name: 'praxica_knowledge_rename', description: 'Rename a canonical document using optimistic concurrency.', inputSchema: schema({ document_id: s('Document ID or URI.'), title: s('New title.'), expected_revision: s('Required revision returned by the last read.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['document_id', 'title', 'expected_revision']) },
+  { name: 'praxica_knowledge_move', description: 'Move a canonical document below another document using optimistic concurrency.', inputSchema: schema({ document_id: s('Document to move.'), parent_id: s('Destination parent ID or URI.'), expected_revision: s('Required revision returned by the last read.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['document_id', 'parent_id', 'expected_revision']) },
+  { name: 'praxica_knowledge_delete', description: 'Move a canonical document to the recycle bin after explicit user confirmation.', inputSchema: schema({ document_id: s('Document ID or URI.'), expected_revision: s('Required revision returned by the last read.'), confirm: b('Must be true after explicit user confirmation.'), idempotency_key: s('Stable retry key; derived automatically if omitted.') }, ['document_id', 'expected_revision', 'confirm']) },
 ];
 
 function send(obj) { process.stdout.write(`${JSON.stringify(obj)}\n`); }
@@ -79,9 +112,10 @@ function log(entry) {
   } catch (_) {}
 }
 
-async function request(method, urlPath, body) {
+async function request(method, urlPath, body, extraHeaders = {}) {
   const headers = { 'x-agent': agentName, 'x-actor': agentName, 'content-type': 'application/json' };
   if (commandCenterToken) headers.authorization = `Bearer ${commandCenterToken}`;
+  Object.assign(headers, extraHeaders);
   const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(`${baseUrl}${urlPath}`, opts);
@@ -93,6 +127,37 @@ async function request(method, urlPath, body) {
     throw new Error(`${method} ${urlPath} failed ${res.status}: ${msg}`);
   }
   return data;
+}
+
+function compact(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function cleanKnowledgePathSegment(value) {
+  return String(value || '').trim().replace(/[\\/]+/g, '-').replace(/\s+/g, ' ');
+}
+
+function knowledgeDocumentPath(args) {
+  const explicit = String(args.path || '').trim();
+  if (explicit) return explicit.startsWith('/') ? explicit : `/${explicit}`;
+  const title = cleanKnowledgePathSegment(args.title || args.variables?.title);
+  if (!title) return undefined;
+  const collection = cleanKnowledgePathSegment(args.collection || knowledgeDefaultCollection);
+  return collection ? `/${collection}/${title}` : `/${title}`;
+}
+
+function knowledgeApiDocumentPath(id) {
+  return `/api/praxica-knowledge/documents/${encodeURIComponent(String(id || '').trim())}`;
+}
+
+function knowledgeMutationHeaders(toolName, body, explicitKey) {
+  const supplied = String(explicitKey || '').trim();
+  const idempotencyKey = supplied || `mcp-${agentName}-${toolName}-${crypto
+    .createHash('sha256')
+    .update(JSON.stringify({ agentName, toolName, body }))
+    .digest('hex')
+    .slice(0, 32)}`;
+  return { 'idempotency-key': idempotencyKey };
 }
 
 function normalizeAssigneeToken(value) {
@@ -396,6 +461,51 @@ async function callTool(name, args) {
     if (args.comment) await request('POST', `/api/tasks/${Number(args.id)}/comments`, { author: agentName, body: args.comment, source: 'worker', level: 'info' });
     log({ tool: name, task_id: Number(args.id), label_ids, ok: true });
     return data;
+  }
+
+  if (name === 'praxica_knowledge_status') return request('GET', '/api/praxica-knowledge/status');
+  if (name === 'praxica_knowledge_list_notebooks') return request('GET', '/api/praxica-knowledge/notebooks');
+  if (name === 'praxica_knowledge_list_templates') return request('GET', '/api/praxica-knowledge/templates');
+  if (name === 'praxica_knowledge_search') {
+    const query = new URLSearchParams();
+    if (args.query) query.set('q', String(args.query));
+    if (args.limit) query.set('limit', String(args.limit));
+    return request('GET', `/api/praxica-knowledge/documents${query.size ? `?${query}` : ''}`);
+  }
+  if (name === 'praxica_knowledge_read') return request('GET', knowledgeApiDocumentPath(args.document_id));
+  if (name === 'praxica_knowledge_create') {
+    const body = compact({ title: args.title, markdown: args.markdown, path: knowledgeDocumentPath(args), notebook: args.notebook || knowledgeDefaultNotebook || undefined });
+    return request('POST', '/api/praxica-knowledge/documents', body, knowledgeMutationHeaders(name, body, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_create_from_template') {
+    const body = compact({ templateId: args.template_id, variables: args.variables, path: knowledgeDocumentPath(args), notebook: args.notebook || knowledgeDefaultNotebook || undefined });
+    return request('POST', '/api/praxica-knowledge/documents/from-template', body, knowledgeMutationHeaders(name, body, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_append') {
+    const body = compact({ markdown: args.markdown, expectedRevision: args.expected_revision });
+    return request('POST', `${knowledgeApiDocumentPath(args.document_id)}/append`, body, knowledgeMutationHeaders(name, { id: args.document_id, ...body }, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_edit') {
+    const body = { oldText: args.old_text, newText: args.new_text, expectedRevision: args.expected_revision };
+    return request('POST', `${knowledgeApiDocumentPath(args.document_id)}/edit`, body, knowledgeMutationHeaders(name, { id: args.document_id, ...body }, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_replace') {
+    if (args.confirm_full_replace !== true) throw new Error('Complete document replacement requires confirm_full_replace=true after explicit user confirmation.');
+    const body = { markdown: args.markdown, expectedRevision: args.expected_revision, confirmFullReplace: true };
+    return request('PUT', knowledgeApiDocumentPath(args.document_id), body, knowledgeMutationHeaders(name, { id: args.document_id, ...body }, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_rename') {
+    const body = { title: args.title, expectedRevision: args.expected_revision };
+    return request('PATCH', knowledgeApiDocumentPath(args.document_id), body, knowledgeMutationHeaders(name, { id: args.document_id, ...body }, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_move') {
+    const body = { parentId: args.parent_id, expectedRevision: args.expected_revision };
+    return request('POST', `${knowledgeApiDocumentPath(args.document_id)}/move`, body, knowledgeMutationHeaders(name, { id: args.document_id, ...body }, args.idempotency_key));
+  }
+  if (name === 'praxica_knowledge_delete') {
+    if (args.confirm !== true) throw new Error('Deletion requires confirm=true after explicit user confirmation.');
+    const body = { expectedRevision: args.expected_revision };
+    return request('DELETE', knowledgeApiDocumentPath(args.document_id), body, knowledgeMutationHeaders(name, { id: args.document_id, ...body }, args.idempotency_key));
   }
 
   throw new Error(`Unknown tool: ${name}`);

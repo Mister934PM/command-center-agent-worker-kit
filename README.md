@@ -18,6 +18,7 @@ COMMAND_CENTER_AGENT=<worker-key>
 COMMAND_CENTER_TOKEN=<ccw-token>
 COMMAND_CENTER_KANBAN_ACTION_LOG=<optional-log-path>
 COMMAND_CENTER_WORKER_ROOT=<worker-root>
+PRAXICA_KNOWLEDGE_DEFAULT_COLLECTION="10 Research"
 NOCODB_MCP_CREDENTIALS_DIR=<worker-root>/credentials
 ```
 
@@ -55,7 +56,9 @@ The MCP exposes worker-scoped tools only:
 
 Tool calls also report worker heartbeat and task-scoped activity back to Command Center when `COMMAND_CENTER_TOKEN` is set. Operators do not need to manually log routine activity.
 
-Comments and task artifacts are the shared collaboration surface. Any registered worker with `tasks.write` can add task comments and save task artifacts through this MCP. Task artifacts are task-attached markdown/files, not global Command Center documents.
+Comments and task artifacts are the task-scoped collaboration surface. Any registered worker with `tasks.write` can add task comments and save task artifacts through this MCP. Task artifacts are task-attached markdown/files, not global Command Center documents.
+
+The same MCP and `COMMAND_CENTER_TOKEN` also expose Praxica Knowledge when the worker has `knowledge.read` and/or `knowledge.write`. Available tools cover status, search, read, template discovery, create, append, revision-safe exact edits, explicitly confirmed whole-document replacement, guarded rename/move, and confirmed recycle-bin deletion. New worker research defaults to `/10 Research/<title>` unless a collection or path is supplied.
 
 Subtasks are part of the real shared backend, but they are stored inside the parent task record. Workers should not invent routes or use worker-local kanban task IDs. Use the direct MCP tools above for all real shared backend task and subtask CRUD.
 
