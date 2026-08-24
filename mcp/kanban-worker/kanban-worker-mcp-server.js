@@ -30,7 +30,7 @@ loadEnvFile(path.resolve(process.cwd(), '.env'));
 
 const SERVER_NAME = 'command-center-kanban-worker';
 const SERVER_VERSION = '0.1.0';
-const baseUrl = String(process.env.COMMAND_CENTER_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const baseUrl = String(process.env.COMMAND_CENTER_URL || 'https://cc.praxica.io').replace(/\/+$/, '');
 const agentName = String(process.env.COMMAND_CENTER_AGENT || 'hermes').trim().toLowerCase() || 'hermes';
 
 function readCommandCenterToken() {
